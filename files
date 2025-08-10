@@ -1,0 +1,787 @@
+\`\`\`tsx
+import type React from "react"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/components/app-sidebar"
+import { Topbar } from "@/components/topbar"
+import { DataProvider } from "@/components/providers/data-provider"
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <DataProvider>
+      <SidebarProvider>
+        <div className="flex min-h-svh w-full overflow-x-hidden">
+          <AppSidebar />
+          <SidebarInset className="w-full max-w-full">
+            <Topbar />
+            <main className="w-full max-w-full overflow-x-hidden p-4 md:p-6 pb-24 md:pb-6">
+              {children}
+            </main>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
+    </DataProvider>
+  )
+}
+\`\`\`
+
+\`\`\`tsx
+import type React from "react"
+import { DataProvider } from "@/components/providers/data-provider"
+
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
+  // Ensure auth pages cannot overflow horizontally on mobile
+  return <div className="w-full max-w-full overflow-x-hidden"><DataProvider>{children}</DataProvider></div>
+}
+\`\`\`
+
+\`\`\`tsx
+"use client"
+
+import { useMemo, useState } from "react"
+import Link from "next/link"
+import { Bell, LogOut, Search, User2 } from 'lucide-react'
+import { SidebarTrigger } from "@/components/ui/sidebar"
+
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import { useApp } from "@/hooks/use-app"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+
+export function Topbar() {
+  const { user, signOut, customers, orders, fabrics } = useApp()
+  const [q, setQ] = useState("")
+  const results = useMemo(() => {
+    const term = q.trim().toLowerCase()
+    if (!term) return []
+    const cx = customers
+      .filter((c) => c.name.toLowerCase().includes(term) || c.phone?.includes(term))
+      .map((c) => ({ type: "Customer", label: c.name, href: `/customers/${c.id}` }))
+  const ox = orders
+      .filter((o) => o.code.toLowerCase().includes(term))
+      .map((o) => ({ type: "Order", label: o.code, href: `/orders/${o.id}` }))
+    const fx = fabrics
+      .filter((f) => f.name.toLowerCase().includes(term))
+      .map((f) => ({ type: "Fabric", label: f.name, href: `/fabrics#${f.id}` }))
+    return [...cx, ...ox, ...fx].slice(0, 6)
+  }, [q, customers, orders, fabrics])
+
+  return (
+    <header className="sticky top-0 z-40 w-full border-b bg-background px-2 sm:px-4 py-2">
+      <div className="flex w-full items-center gap-2 flex-wrap min-w-0">
+        <SidebarTrigger className="shrink-0" />
+        <div className="relative flex-1 min-w-0">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search customers, orders, fabrics..."
+            className="pl-9"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          {results.length > 0 && (
+            <div className="absolute left-0 right-0 mt-1 max-h-[60svh] overflow-auto rounded-md border bg-popover text-popover-foreground shadow z-50">
+              {results.map((r, i) => (
+                <Link key={i} href={r.href} className="block px-3 py-2 text-sm hover:bg-accent">
+                  <span className="text-muted-foreground mr-2">{r.type}:</span>
+                  <span className="font-medium">{r.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="icon" className="relative">
+            <Bell className="w-5 h-5" />
+            <span className="sr-only">Notifications</span>
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="gap-2">
+                <Avatar className="h-7 w-7">
+                  <AvatarImage src="/placeholder.svg?height=64&width=64" alt="avatar" />
+                  <AvatarFallback>
+                    <User2 className="w-4 h-4" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden md:inline text-sm">{user?.name ?? "Guest"}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {user ? (
+                <>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings">Settings</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={signOut}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign out
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem asChild>
+                  <Link href="/login">Sign in</Link>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </header>
+  )
+}
+\`\`\`
+
+\`\`\`tsx
+"use client"
+
+import Link from "next/link"
+import { AlertTriangle, CalendarDays, ScrollText, Shirt, Users } from 'lucide-react'
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { useApp } from "@/hooks/use-app"
+
+export default function DashboardPage() {
+  const { customers, orders, fabrics, lowStock, upcoming } = useApp()
+
+  const totalRevenue = orders.reduce((acc, o) => acc + o.payment.total, 0)
+  const paid = orders.reduce((acc, o) => acc + o.payment.paidAmount, 0)
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
+        <Card>
+          <CardContent className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-2 p-4 min-w-0">
+            <div className="min-w-0">
+              <div className="text-sm text-muted-foreground">Customers</div>
+              <div className="text-3xl font-bold leading-none truncate">{customers.length}</div>
+            </div>
+            <Users className="w-8 h-8 text-muted-foreground shrink-0" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-2 p-4 min-w-0">
+            <div className="min-w-0">
+              <div className="text-sm text-muted-foreground">Orders</div>
+              <div className="text-3xl font-bold leading-none truncate">{orders.length}</div>
+            </div>
+            <ScrollText className="w-8 h-8 text-muted-foreground shrink-0" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-2 p-4 min-w-0">
+            <div className="min-w-0">
+              <div className="text-sm text-muted-foreground">Revenue</div>
+              <div className="text-3xl font-bold leading-none truncate">{`$${totalRevenue.toFixed(2)}`}</div>
+            </div>
+            <Badge variant="secondary" className="shrink-0">{`Paid $${paid.toFixed(2)}`}</Badge>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-2 p-4 min-w-0">
+            <div className="min-w-0">
+              <div className="text-sm text-muted-foreground">Fabrics</div>
+              <div className="text-3xl font-bold leading-none truncate">{fabrics.length}</div>
+            </div>
+            <Shirt className="w-8 h-8 text-muted-foreground shrink-0" />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center">
+            <CardTitle>Low Stock Fabrics</CardTitle>
+            <Badge variant="destructive" className="ml-auto shrink-0">
+              <AlertTriangle className="w-4 h-4 mr-1" />
+              {lowStock.length}
+            </Badge>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {lowStock.length === 0 && <div className="p-4 text-sm text-muted-foreground">All good 🎉</div>}
+              {lowStock.map((f) => (
+                <div key={f.id} className="p-4 flex items-center gap-3 min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{f.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {f.category} • {f.color} • {f.pattern}
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0">{f.stockMeters} m</Badge>
+                  <Button asChild size="sm" variant="outline" className="shrink-0 bg-transparent">
+                    <Link href={`/fabrics#${f.id}`}>View</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center">
+            <CardTitle>Upcoming Due Dates</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {upcoming.length === 0 && <div className="p-4 text-sm text-muted-foreground">No upcoming deadlines</div>}
+              {upcoming.map((o) => (
+                <div key={o.id} className="p-4 flex items-center gap-3 min-w-0">
+                  <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{o.code}</div>
+                    <div className="text-xs text-muted-foreground">{`Due ${new Date(o.dueDate!).toLocaleDateString()}`}</div>
+                  </div>
+                  <Badge className="shrink-0">{o.status}</Badge>
+                  <Button asChild size="sm" className="shrink-0">
+                    <Link href={`/orders/${o.id}`}>Open</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <Button asChild>
+          <Link href="/orders/new">New Order</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/customers/new">Add Customer</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/fabrics/new">Add Fabric</Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+\`\`\`
+
+\`\`\`tsx
+"use client"
+
+import { notFound } from "next/navigation"
+import { ArrowRight, Download, MoveRight } from 'lucide-react'
+import { jsPDF } from "jspdf"
+
+import { useApp } from "@/hooks/use-app"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import type { OrderStatus } from "@/lib/types"
+
+const flow: OrderStatus[] = ["Pending", "Cutting", "Sewing", "Ready", "Delivered"]
+
+export default function OrderDetailPage({ params }: { params: { id: string } }) {
+  const { orders, customers, fabrics, updateOrderStatus, recordPayment } = useApp()
+  const order = orders.find((o) => o.id === params.id)
+  if (!order) return notFound()
+
+  const customer = customers.find((c) => c.id === order.customerId)
+  const totalDue = Math.max(0, order.payment.total - order.payment.paidAmount)
+
+  function nextStatus(s: OrderStatus): OrderStatus | null {
+    const i = flow.indexOf(s)
+    if (i === -1 || i === flow.length - 1) return null
+    return flow[i + 1]
+  }
+
+  function generatePDF() {
+    const doc = new jsPDF()
+    let y = 10
+    doc.setFontSize(16)
+    doc.text("Sew-In Receipt / Invoice", 10, y)
+    y += 8
+    doc.setFontSize(12)
+    doc.text(`Order: ${order.code}`, 10, y)
+    y += 6
+    doc.text(`Customer: ${customer?.name ?? ""}`, 10, y)
+    y += 6
+    doc.text(`Status: ${order.status}`, 10, y)
+    y += 10
+
+    doc.setFontSize(12)
+    doc.text("Items:", 10, y)
+    y += 6
+    order.items.forEach((it, idx) => {
+      const f = fabrics.find((fa) => fa.id === it.fabricId)
+      doc.text(`${idx + 1}. ${it.garmentType} — Fabric: ${f?.name ?? "N/A"} — ${it.fabricMeters ?? 0} m`, 12, y)
+      y += 6
+      if (it.fabricSamplePhoto) {
+        try {
+          doc.addImage(it.fabricSamplePhoto, "JPEG", 12, y, 20, 20)
+          y += 22
+        } catch {
+          // ignore if unsupported
+        }
+      }
+    })
+    y += 4
+    doc.text(`Fabric: $${order.payment.fabricCost.toFixed(2)}`, 10, y)
+    y += 6
+    doc.text(`Sewing: $${order.payment.sewingCost.toFixed(2)}`, 10, y)
+    y += 6
+    if (order.payment.extras) {
+      doc.text(`Extras: $${order.payment.extras.toFixed(2)}`, 10, y)
+      y += 6
+    }
+    if (order.payment.discount) {
+      doc.text(`Discount: -$${order.payment.discount.toFixed(2)}`, 10, y)
+      y += 6
+    }
+    doc.text(`Total: $${order.payment.total.toFixed(2)}`, 10, y)
+    y += 6
+    doc.text(`Paid: $${order.payment.paidAmount.toFixed(2)} — Status: ${order.payment.status}`, 10, y)
+    y += 10
+    doc.text("Thank you!", 10, y)
+
+    doc.save(`${order.code}.pdf`)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="text-2xl font-semibold min-w-0">{order.code}</div>
+        <Badge className="ml-1">{order.status}</Badge>
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" onClick={generatePDF} className="gap-2 bg-transparent shrink-0">
+            <Download className="w-4 h-4" />
+            Invoice PDF
+          </Button>
+          {nextStatus(order.status) && (
+            <Button
+              size="sm"
+              onClick={() => updateOrderStatus(order.id, nextStatus(order.status) as OrderStatus)}
+              className="gap-2 shrink-0"
+            >
+              Move to {nextStatus(order.status)} <MoveRight className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+          <div>
+            <div className="text-sm text-muted-foreground">Customer</div>
+            <div className="font-medium">{customer?.name}</div>
+          </div>
+          <div>
+            {order.dueDate && (
+              <>
+                <div className="text-sm text-muted-foreground">Due Date</div>
+                <div className="font-medium">{new Date(order.dueDate).toLocaleDateString()}</div>
+              </>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Assigned</div>
+            <div className="font-medium">{order.assignedTo || "-"}</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Items</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {order.items.map((it) => {
+            const f = fabrics.find((fa) => fa.id === it.fabricId)
+            return (
+              <div key={it.id} className="border rounded-md p-4 flex items-center gap-3 min-w-0">
+                <div className="font-medium w-28 shrink-0">{it.garmentType}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm truncate">
+                    <span className="text-muted-foreground">Fabric: </span>
+                    {f?.name ?? "N/A"} {it.fabricMeters ? `• ${it.fabricMeters} m` : ""}
+                  </div>
+                  {it.notes && <div className="text-xs text-muted-foreground">{it.notes}</div>}
+                </div>
+                {it.fabricSamplePhoto && (
+                  <img
+                    src={it.fabricSamplePhoto || "/placeholder.svg"}
+                    alt="sample"
+                    className="h-12 w-12 rounded-md object-cover border shrink-0"
+                  />
+                )}
+              </div>
+            )
+          })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-4">
+          <div>
+            <div className="text-sm text-muted-foreground">Total</div>
+            <div className="font-medium">{`$${order.payment.total.toFixed(2)}`}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Paid</div>
+            <div className="font-medium">{`$${order.payment.paidAmount.toFixed(2)}`}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Due</div>
+            <div className="font-medium">{`$${totalDue.toFixed(2)}`}</div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="Amount"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const v = Number((e.target as HTMLInputElement).value)
+                  if (v > 0) {
+                    recordPayment(order.id, v)
+                    ;(e.target as HTMLInputElement).value = ""
+                  }
+                }
+              }}
+              className="w-28"
+            />
+            <Button
+              variant="outline"
+              onClick={() => {
+                const input = document.activeElement as HTMLInputElement
+                const v = Number(input?.value ?? 0)
+                if (v > 0) {
+                  recordPayment(order.id, v)
+                  if (input) input.value = ""
+                }
+              }}
+            >
+              Add
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Workflow</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {flow.map((s, i) => (
+              <div key={s} className="flex items-center gap-2">
+                <Badge variant={s === order.status ? "default" : "secondary"}>{s}</Badge>
+                {i < flow.length - 1 && <ArrowRight className="w-4 h-4 text-muted-foreground" />}
+              </div>
+            ))}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            Updated {new Date(order.timeline[order.timeline.length - 1].at).toLocaleString()}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+\`\`\`
+
+\`\`\`tsx
+"use client"
+
+import { notFound, useRouter } from "next/navigation"
+import { useMemo, useRef, useState } from "react"
+import { Edit, Plus, Upload } from 'lucide-react'
+
+import { useApp } from "@/hooks/use-app"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+
+export default function CustomerDetailPage({ params }: { params: { id: string } }) {
+  const router = useRouter()
+  const { customers, updateCustomer } = useApp()
+  const customer = useMemo(() => customers.find((c) => c.id === params.id), [customers, params.id])
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(customer?.name ?? "")
+  const [phone, setPhone] = useState(customer?.phone ?? "")
+  const [email, setEmail] = useState(customer?.email ?? "")
+  const [address, setAddress] = useState(customer?.address ?? "")
+  const [photo, setPhoto] = useState<string | undefined>(customer?.photo)
+
+  if (!customer) return notFound()
+
+  function pickFileToDataURL(file: File) {
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const measurementSets = customer.measurementSets
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-4 flex-wrap">
+          <CardTitle className="flex-1 min-w-0">{customer.name}</CardTitle>
+          <Button variant="outline" onClick={() => setEditing((s) => !s)} className="gap-2 shrink-0">
+            <Edit className="w-4 h-4" />
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input disabled={!editing} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Phone</Label>
+            <Input disabled={!editing} value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Email</Label>
+            <Input disabled={!editing} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Address</Label>
+            <Input disabled={!editing} value={address} onChange={(e) => setAddress(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Photo</Label>
+            <div className="flex items-center gap-3">
+              <img
+                src={photo || "/placeholder.svg?height=64&width=64&query=customer%20profile"}
+                alt="profile"
+                className="h-14 w-14 rounded-md object-cover border shrink-0"
+              />
+              {editing && (
+                <>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0]
+                      if (f) {
+                        const data = await pickFileToDataURL(f)
+                        setPhoto(data)
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" onClick={() => fileRef.current?.click()} className="gap-2">
+                    <Upload className="w-4 h-4" />
+                    Replace
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {editing && (
+            <div className="md:col-span-3">
+              <Button
+                onClick={() => {
+                  updateCustomer(customer.id, { name, phone, email, address, photo })
+                  setEditing(false)
+                }}
+              >
+                Save Changes
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center flex-wrap">
+          <CardTitle>Measurement Sets</CardTitle>
+          <Button asChild className="ml-auto shrink-0">
+            <a href={`/orders/new?customerId=${customer.id}`}>
+              <Plus className="w-4 h-4 mr-2" />
+              New Order
+            </a>
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {measurementSets.length === 0 && <div className="text-sm text-muted-foreground">No sets yet.</div>}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {measurementSets.map((s) => (
+              <div key={s.id} className="border rounded-md p-4">
+                <div className="font-medium truncate">{s.name}</div>
+                <div className="text-xs text-muted-foreground mb-2">{s.garmentType}</div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(s.values).map(([k, v]) => (
+                    <Badge key={k} variant="secondary" className="capitalize">
+                      {k}: {v}
+                    </Badge>
+                  ))}
+                </div>
+                {s.notes && <div className="text-xs text-muted-foreground mt-2">{s.notes}</div>}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+\`\`\`
+
+\`\`\`tsx
+"use client"
+
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  LabelList,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip as ChartsTooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart"
+import { useApp } from "@/hooks/use-app"
+
+export default function ReportsPage() {
+  const { orders, fabrics } = useApp()
+
+  const byMonth: { month: string; count: number }[] = Array.from({ length: 6 }).map((_, i) => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - (5 - i))
+    const key = `${d.getFullYear()}-${d.getMonth()}`
+    const cnt = orders.filter((o) => {
+      const od = new Date(o.createdAt)
+      return `${od.getFullYear()}-${od.getMonth()}` === key
+    }).length
+    return { month: d.toLocaleString(undefined, { month: "short" }), count: cnt }
+  })
+
+  const fabricPopularity = fabrics
+    .map((f) => ({
+      name: f.name,
+      used: orders.reduce((acc, o) => acc + o.items.filter((it) => it.fabricId === f.id).length, 0),
+    }))
+    .sort((a, b) => b.used - a.used)
+    .slice(0, 5)
+
+  const revenueByMonth = Array.from({ length: 6 }).map((_, i) => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - (5 - i))
+    const key = `${d.getFullYear()}-${d.getMonth()}`
+    const sum = orders.reduce((acc, o) => {
+      const od = new Date(o.createdAt)
+      const k = `${od.getFullYear()}-${od.getMonth()}`
+      return acc + (k === key ? o.payment.total : 0)
+    }, 0)
+    return { month: d.toLocaleString(undefined, { month: "short" }), revenue: sum }
+  })
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Orders (last 6 months)</CardTitle>
+        </CardHeader>
+        <CardContent className="w-full overflow-x-hidden">
+          <ChartContainer
+            config={{ count: { label: "Orders", color: "hsl(var(--primary))" } }}
+            className="h-[260px] sm:h-[280px]"
+          >
+            <ResponsiveContainer>
+              <LineChart data={byMonth}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                <YAxis allowDecimals={false} />
+                <ChartsTooltip content={<ChartTooltipContent />} />
+                <Line dataKey="count" stroke="var(--color-count)" strokeWidth={2} dot />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Top Fabrics</CardTitle>
+        </CardHeader>
+        <CardContent className="w-full overflow-x-hidden">
+          <ChartContainer
+            config={{ used: { label: "Used", color: "hsl(var(--chart-2))" } }}
+            className="h-[260px] sm:h-[280px]"
+          >
+            <ResponsiveContainer>
+              <BarChart data={fabricPopularity}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                <YAxis allowDecimals={false} />
+                <ChartsTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="used" fill="var(--color-used)" radius={6}>
+                  <LabelList dataKey="used" position="top" />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Revenue (last 6 months)</CardTitle>
+          </CardHeader>
+          <CardContent className="w-full overflow-x-hidden">
+            <ChartContainer
+              config={{ revenue: { label: "Revenue", color: "hsl(var(--chart-4))" } }}
+              className="h-[280px] sm:h-[300px]"
+            >
+              <ResponsiveContainer>
+                <LineChart data={revenueByMonth}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                  <YAxis />
+                  <ChartsTooltip content={<ChartTooltipContent />} />
+                  <Line dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={2} dot />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+\`\`\`
+
+\`\`\`css
+/* Mobile overflow safety: avoid horizontal scroll from long flex/grid children */
+@media (max-width: 640px) {
+  .flex > *, .grid > * { min-width: 0; }
+}
+
+/* Ensure root never overflows horizontally */
+html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+\`\`\`
